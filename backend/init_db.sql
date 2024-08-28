@@ -18,16 +18,20 @@ CREATE TABLE IF NOT EXISTS posts (
     timestamp INTEGER NULL,
     image_urls JSON NULL,
     base_url VARCHAR(1000) NOT NULL
+    text_hash BYTEA NOT NULL,
+    UNIQUE (text_hash, base_url)
 );
 
--- CREATE TABLE IF NOT EXISTS offers (
---     id SERIAL PRIMARY KEY,
---     property_id INTEGER FOREIGN KEY REFERENCES properties(id) NOT NULL,
---     amount NUMERIC(10, 2) NOT NULL,
---     name VARCHAR(100) NOT NULL,
---     phone VARCHAR(20) NOT NULL,
---     email VARCHAR(100) NOT NULL
--- );
+CREATE INDEX idx_text_hash_base_url ON posts (text_hash, base_url);
+
+CREATE TABLE IF NOT EXISTS offers (
+    id SERIAL PRIMARY KEY,
+    property_id INTEGER FOREIGN KEY REFERENCES properties(id) NOT NULL,
+    amount NUMERIC(10, 2) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(100) NOT NULL
+);
 
 INSERT INTO properties (address, price, bedrooms, bathrooms, square_footage, latitude, longitude)
 VALUES 

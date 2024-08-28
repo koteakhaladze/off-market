@@ -1,4 +1,7 @@
+import asyncio
 import threading
+import sys
+sys.path.append('..')
 from backend.scraper import FacebookScraper
 import schedule
 
@@ -7,12 +10,12 @@ urls = [
     "https://www.facebook.com/groups/1972974669636613/?sorting_setting=CHRONOLOGICAL",
 ]
 
-async def run_scraper():
+def run_scraper():
     for url in urls:
         scraper = FacebookScraper(url)
-        await scraper.execute()
+        asyncio.run(scraper.execute())
 
-schedule.every(6).hours.do(run_scraper)
+schedule.every(15).minutes.do(run_scraper)
 
 # Function to run the scheduler
 def run_scheduler():

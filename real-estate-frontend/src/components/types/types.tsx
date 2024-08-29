@@ -7,5 +7,5 @@ export interface Property {
     square_footage: number;
     latitude: number;
     longitude: number;
-    image_url: string;
+    image_urls: string[] | null;
   }

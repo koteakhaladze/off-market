@@ -1,13 +1,19 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
+from sqlalchemy.dialects.postgresql import JSON
 from datetime import datetime
-from functools import wraps
+from flask_jwt_extended import create_access_token, unset_jwt_cookies
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
 
 app = Flask(__name__)
 CORS(app)
+
+app.config["JWT_SECRET_KEY"] = "2JTtpCfG6WSqX0ARpTPg6DBM0CqGGKM5" 
+jwt = JWTManager(app)
 
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://localhost/real_estate_db'
@@ -15,23 +21,23 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'your_secret_key_here'  # Change this to a random secret key
 
 db = SQLAlchemy(app)
-login_manager = LoginManager()
 
 # User model
-class User(UserMixin, db.Model):
+class User(db.Model):
+    __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128))
+    password_hash = db.Column(db.String(512))
     role = db.Column(db.String(20), nullable=False, default='user')
-    saved_properties = db.relationship('SavedProperty', backref='user', lazy=True)
-    offers = db.relationship('Offer', backref='user', lazy=True)
+
+    def check_password(self, password):
+        print(self.password_hash)
+        return check_password_hash(pwhash=self.password_hash, password=password)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        print(self.password_hash)
 
 # Property model
 class Property(db.Model):
@@ -46,6 +52,7 @@ class Property(db.Model):
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
     offers = db.relationship('Offer', backref='property', lazy=True)
+    image_urls = db.Column(JSON, nullable=True)
 
     def to_dict(self):
         return {
@@ -56,7 +63,8 @@ class Property(db.Model):
             'bathrooms': float(self.bathrooms) if self.bathrooms else None,
             'square_footage': float(self.square_footage) if self.square_footage else None,
             'latitude': self.latitude,
-            'longitude': self.longitude
+            'longitude': self.longitude,
+            'image_urls': self.image_urls
         }
 
 # Offer model
@@ -89,54 +97,54 @@ class SavedProperty(db.Model):
     property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
     saved_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-@login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return User.query.get(user_id)
 
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'admin':
-            return jsonify({"error": "Admin access required"}), 403
-        return f(*args, **kwargs)
-    return decorated_function
 
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
-    user = User(username=data['username'], email=data['email'])
+    username = data['email'].split('@')[0]
+    user = User(username=username, email=data['email'])
+    print(data['password'])
     user.set_password(data['password'])
     db.session.add(user)
     try:
         db.session.commit()
         return jsonify({"message": "User registered successfully"}), 201
-    except:
+    except Exception as e:
+        print(e)
         db.session.rollback()
         return jsonify({"error": "Username or email already exists"}), 400
 
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    user = User.query.filter_by(username=data['username']).first()
+    user = User.query.filter_by(email=data['email']).first()
+    print(data['password'])
     if user and user.check_password(data['password']):
-        login_user(user)
-        return jsonify({"message": "Logged in successfully"}), 200
+        access_token = create_access_token(identity=user.id)
+        return jsonify(access_token=access_token), 200
     return jsonify({"error": "Invalid username or password"}), 401
 
 @app.route('/logout', methods=['POST'])
-@login_required
+@jwt_required()
 def logout():
-    logout_user()
+    response = jsonify({"msg": "logout successful"})
+    unset_jwt_cookies(response)
     return jsonify({"message": "Logged out successfully"}), 200
 
 @app.route('/profile', methods=['GET'])
-@login_required
+@jwt_required()
 def get_profile():
+    current_user_id = get_jwt_identity()
+    current_user = load_user(current_user_id)
     return jsonify({
         "id": current_user.id,
         "username": current_user.username,
         "email": current_user.email,
-        "role": current_user.role
+        "role": current_user.role,
+        # "properties": [sp.property.to_dict() for sp in current_user.saved_properties]
     })
 
 @app.route('/properties', methods=['GET'])
@@ -152,8 +160,7 @@ def get_property(id):
     return jsonify(property.to_dict())
 
 @app.route('/properties', methods=['POST'])
-@login_required
-@admin_required
+@jwt_required()
 def add_property():
     data = request.json
     new_property = Property(
@@ -163,7 +170,8 @@ def add_property():
         bathrooms=data['bathrooms'],
         square_footage=data['square_footage'],
         latitude=data.get('latitude'),
-        longitude=data.get('longitude')
+        longitude=data.get('longitude'),
+        image_urls=data.get('image_urls')
     )
     db.session.add(new_property)
     try:
@@ -174,12 +182,14 @@ def add_property():
         return jsonify({"error": "Failed to add property"}), 400
 
 @app.route('/properties/<int:id>/save', methods=['POST'])
-@login_required
+@jwt_required()
 def save_property(id):
+    current_user_id = get_jwt_identity()
+    user = load_user(current_user_id)
     property = Property.query.get(id)
     if not property:
         return jsonify({"error": "Property not found"}), 404
-    saved_property = SavedProperty(user_id=current_user.id, property_id=id)
+    saved_property = SavedProperty(user_id=user.id, property_id=id)
     db.session.add(saved_property)
     try:
         db.session.commit()
@@ -189,15 +199,19 @@ def save_property(id):
         return jsonify({"error": "Failed to save property"}), 400
 
 @app.route('/saved_properties', methods=['GET'])
-@login_required
+@jwt_required()
 def get_saved_properties():
-    saved_properties = SavedProperty.query.filter_by(user_id=current_user.id).all()
+    current_user_id = get_jwt_identity()
+    user = load_user(current_user_id)
+    saved_properties = SavedProperty.query.filter_by(user_id=user.id).all()
     properties = [Property.query.get(sp.property_id).to_dict() for sp in saved_properties]
     return jsonify(properties)
 
-@app.route('/properties/<int:id>/offer', methods=['POST'])
-@login_required
+@app.route('/properties/<int:id>/offers', methods=['POST'])
+@jwt_required()
 def submit_offer(id):
+    current_user_id = get_jwt_identity()
+    current_user = load_user(current_user_id)
     property = Property.query.get(id)
     if not property:
         return jsonify({"error": "Property not found"}), 404
@@ -216,8 +230,10 @@ def submit_offer(id):
         return jsonify({"error": "Failed to submit offer"}), 400
 
 @app.route('/offers', methods=['GET'])
-@login_required
+@jwt_required()
 def get_user_offers():
+    current_user_id = get_jwt_identity()
+    current_user = load_user(current_user_id)
     offers = Offer.query.filter_by(user_id=current_user.id).all()
     return jsonify([offer.to_dict() for offer in offers])
 

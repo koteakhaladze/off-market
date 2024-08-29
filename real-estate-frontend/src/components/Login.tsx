@@ -1,54 +1,66 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import './Login.css';  // Assume you've saved the CSS in a file called Login.css
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
     try {
-      const response = await axios.post('http://127.0.0.1:5000/login', {
-        username,
-        password
+      const response = await fetch('http://127.0.0.1:5000/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
-      console.log(response.data);
-      localStorage.setItem('isAuthenticated', 'true');
-      navigate('/');
+      
+      const data = await response.json()
+
+      if (data.access_token) {
+        // Store the token in localStorage
+        localStorage.setItem('token', data.access_token);
+        // Redirect to profile page
+        navigate('/profile');
+      } else {
+        setError('Login failed. Please try again.');
+      }
     } catch (err) {
-      setError('Invalid username or password');
+      console.error('Login error:', err);
+      setError('Login failed. Please check your credentials and try again.');
     }
   };
 
   return (
-    <div className="login-container">
-      <form onSubmit={handleSubmit} className="login-form">
-        <h2 className="login-title">Login</h2>
-        {error && <p className="error-message">{error}</p>}
-        <div className="form-group">
-          <label className="form-label" htmlFor="username">
-            Username
+    <div className="max-w-md mx-auto mt-10">
+      <form onSubmit={handleSubmit} className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+        <h2 className="text-2xl mb-6 text-center font-bold">Login</h2>
+        {error && <p className="text-red-500 text-xs italic mb-4">{error}</p>}
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
+            Email
           </label>
           <input
-            className="form-input"
-            id="username"
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            id="email"
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
         </div>
-        <div className="form-group">
-          <label className="form-label" htmlFor="password">
+        <div className="mb-6">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
             Password
           </label>
           <input
-            className="form-input"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
             id="password"
             type="password"
             placeholder="******************"
@@ -57,12 +69,12 @@ const Login: React.FC = () => {
             required
           />
         </div>
-        <div>
+        <div className="flex items-center justify-between">
           <button
-            className="submit-button"
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
             type="submit"
           >
-            Login
+            Sign In
           </button>
         </div>
       </form>

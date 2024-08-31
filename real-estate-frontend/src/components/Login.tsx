@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { login } from '../utils/apiClient';
+
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -23,9 +25,7 @@ const Login: React.FC = () => {
       const data = await response.json()
 
       if (data.access_token) {
-        // Store the token in localStorage
-        localStorage.setItem('token', data.access_token);
-        // Redirect to profile page
+        login(data.access_token);
         navigate('/profile');
       } else {
         setError('Login failed. Please try again.');

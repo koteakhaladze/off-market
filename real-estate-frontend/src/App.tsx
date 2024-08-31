@@ -1,27 +1,29 @@
-import React from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+// src/App.tsx
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, useNavigate } from 'react-router-dom';
+import { setNavigate } from './utils/apiClient';
+import Routes from './Routes';
 import Navbar from './components/Navbar';
-import PropertyList from './components/PropertyList';
-import PropertyDetail from './components/PropertyDetail';
-import Login from './components/Login';
-import Signup from './components/Signup';
-import Profile from './components/Profile';
+
+const AppContent = () => {
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    setNavigate(navigate);
+  }, [navigate]);
+
+  return (
+    <div>
+      <Navbar />
+      <Routes />
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   return (
     <Router>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow">
-          <Routes>
-            <Route path="/" element={<PropertyList />} />
-            <Route path="/property/:id" element={<PropertyDetail />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/profile" element={<Profile />} />
-          </Routes>
-        </main>
-      </div>
+      <AppContent />
     </Router>
   );
 };

@@ -63,6 +63,7 @@ const OfferSubmissionForm: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}` // Assuming you store the token in localStorage
         },
         body: JSON.stringify(formData),
       });

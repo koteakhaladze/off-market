@@ -1,26 +1,71 @@
 /* eslint-disable jsx-a11y/img-redundant-alt */
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Property } from './types/types';
 import Map from 'react-map-gl';
 import { Carousel } from 'react-responsive-carousel';
 import { Marker } from 'react-map-gl';
 import "react-responsive-carousel/lib/styles/carousel.min.css";
 import OfferSubmissionForm from './OfferSubmission';
+import RequireAuth from './RequireAuth';
+import apiClient, { isLoggedIn } from '../utils/apiClient';
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoia290ZWFraCIsImEiOiJjbTBhdDE2ZG0wMTNiMmtzYzdpMnlkOHVnIn0.3SAE5oT786OCLD5_ziMqOA';
 
-const PropertyDetail: React.FC = () => {
+const PropertyDetailContent: React.FC = () => {
   const [property, setProperty] = useState<Property | null>(null);
   const { id } = useParams<{ id: string }>();
   const [showOfferForm, setShowOfferForm] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  console.log(property);
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:5000/properties/${id}`)
-      .then(response => response.json())
-      .then(data => setProperty(data));
+    const fetchProperties = async () => {
+      try {
+        const data = await apiClient(`/properties/${id}`);
+        setProperty(data);
+      } catch (error) {
+        console.error('Failed to fetch properties:', error);
+      }
+    };
+
+    fetchProperties();
+
+    const fetchSavedProperties = async () => {
+      try {
+        const data = await apiClient(`/saved_properties`);
+        setIsSaved(data.filter((p: Property) => p.id === parseInt(id as string)).length > 0);
+      } catch (error) {
+        console.error('Failed to fetch properties:', error);
+      }
+    };
+    fetchSavedProperties();
   }, [id]);
 
+  const handleSaveProperty = async () => {
+    if (!isLoggedIn() || !property) return;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:5000/properties/${id}/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ id: property.id })
+      });
+
+      if (response.ok) {
+        setIsSaved(true);
+        alert('Property saved successfully!');
+      } else {
+        throw new Error('Failed to save property');
+      }
+    } catch (error) {
+      console.error('Error saving property:', error);
+      alert('Failed to save property. Please try again.');
+    }
+  };
 
   if (!property) return <div>Loading...</div>;
 
@@ -66,7 +111,16 @@ const PropertyDetail: React.FC = () => {
               longitude={property.longitude || 0}
             />
           </Map>
-          {!showOfferForm ? (
+          {isLoggedIn() && (
+            <button 
+              className={`w-1/2 mt-6 ${isSaved ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-500 hover:bg-blue-600'} text-white py-3 rounded-lg font-semibold transition duration-300`}
+              onClick={handleSaveProperty}
+              disabled={isSaved}
+            >
+              {isSaved ? 'Saved' : 'Save Property'}
+            </button>
+          )}
+          {!property.offer && !showOfferForm ? (
             <button 
               className="w-full mt-6 bg-red-500 text-white py-3 rounded-lg font-semibold hover:bg-red-600 transition duration-300"
               onClick={() => setShowOfferForm(true)}
@@ -74,6 +128,7 @@ const PropertyDetail: React.FC = () => {
               Make an Offer
             </button>
           ) : (
+            !property.offer && 
             <div className="mt-6">
               <OfferSubmissionForm />
               <button 
@@ -89,5 +144,11 @@ const PropertyDetail: React.FC = () => {
     </div>
   );
 };
+
+const PropertyDetail: React.FC = () => (
+  <RequireAuth>
+    <PropertyDetailContent />
+  </RequireAuth>
+);
 
 export default PropertyDetail;

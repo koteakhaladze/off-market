@@ -6,7 +6,7 @@ const Profile: React.FC = () => {
   const [profile, setProfile] = useState({
     username: '',
     email: '',
-    savedProperties: [] as Property[]
+    properties: [] as Property[]
   });
 
   useEffect(() => {
@@ -43,7 +43,7 @@ const Profile: React.FC = () => {
 
       <h2 className="text-2xl font-bold mt-8 mb-4">Saved Properties</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {profile?.savedProperties?.map(property => (
+        {profile?.properties?.map(property => (
           <div key={property.id} className="bg-white shadow-md rounded-lg overflow-hidden">
             {property.image_urls && property.image_urls.length > 0 && (
               <img src={property.image_urls[0]} alt={property.address} className="w-full h-48 object-cover" />

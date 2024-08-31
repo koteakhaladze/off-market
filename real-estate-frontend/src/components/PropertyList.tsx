@@ -5,6 +5,7 @@ import { Carousel } from 'react-responsive-carousel';
 import "react-responsive-carousel/lib/styles/carousel.min.css";
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Property } from './types/types';
+import apiClient from '../utils/apiClient';
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoia290ZWFraCIsImEiOiJjbTBhdDE2ZG0wMTNiMmtzYzdpMnlkOHVnIn0.3SAE5oT786OCLD5_ziMqOA';
 
@@ -18,9 +19,16 @@ const PropertyList: React.FC = () => {
   });
 
   useEffect(() => {
-    fetch('http://127.0.0.1:5000/properties')
-      .then(response => response.json())
-      .then(data => setProperties(data));
+    const fetchProperties = async () => {
+      try {
+        const data = await apiClient('/properties');
+        setProperties(data);
+      } catch (error) {
+        console.error('Failed to fetch properties:', error);
+      }
+    };
+
+    fetchProperties();
   }, []);
 
   if (properties.length === 0) return <div>Loading...</div>;
@@ -28,7 +36,9 @@ const PropertyList: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-3xl font-bold mb-6">Property Listings</h1>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      
+      {/* Full-width map */}
+      <div className="mb-8">
         <div>
           <Map
             initialViewState={{
@@ -70,8 +80,10 @@ const PropertyList: React.FC = () => {
             )}
           </Map>
         </div>
-        <div className="space-y-8">
-          {properties.map(property => (
+        <div className="border-t border-gray-200 my-8"></div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        {properties.map(property => (
             <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden">
               {property.image_urls && property.image_urls.length > 0 ? (
                 <Carousel showThumbs={false} showStatus={false}>

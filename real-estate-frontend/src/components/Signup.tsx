@@ -5,10 +5,18 @@ const Signup: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const navigate = useNavigate();
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (password !== confirmPassword) {
+      setError("Passwords don't match");
+      return;
+    }
+
     try {
       const response = await fetch('http://127.0.0.1:5000/register', {
         method: 'POST',
@@ -17,14 +25,18 @@ const Signup: React.FC = () => {
         },
         body: JSON.stringify({ email, password }),
       });
-      console.log(response);
-      console.log("navigating")
-      setTimeout(() => {
+
+      if (response.status === 201) {
+        console.log('Signup successful');
+        // Optional: You can show a success message here before redirecting
         navigate('/login');
-      }, 200);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Signup failed');
+      }
     } catch (err) {
-      console.error('Login error:', err);
-      setError('Login failed. Please check your credentials and try again.');
+      console.error('Signup error:', err);
+      setError(err instanceof Error ? err.message : 'Signup failed. Please try again.');
     }
   };
 

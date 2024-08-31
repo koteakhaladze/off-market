@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 from sqlalchemy.dialects.postgresql import JSON
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_jwt_extended import create_access_token, unset_jwt_cookies
 from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
@@ -13,6 +13,8 @@ app = Flask(__name__)
 CORS(app)
 
 app.config["JWT_SECRET_KEY"] = "2JTtpCfG6WSqX0ARpTPg6DBM0CqGGKM5" 
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=3)
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=3)
 jwt = JWTManager(app)
 
 # Database configuration
@@ -73,10 +75,13 @@ class Offer(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     status = db.Column(db.String(20), nullable=False, default='pending')
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    name = db.Column(db.String(200), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
+    email = db.Column(db.String(200), nullable=False)
 
     def to_dict(self):
         return {
@@ -93,7 +98,7 @@ class SavedProperty(db.Model):
     __tablename__ = 'saved_properties'
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     property_id = db.Column(db.Integer, db.ForeignKey('properties.id'), nullable=False)
     saved_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
@@ -106,7 +111,6 @@ def register():
     data = request.json
     username = data['email'].split('@')[0]
     user = User(username=username, email=data['email'])
-    print(data['password'])
     user.set_password(data['password'])
     db.session.add(user)
     try:
@@ -139,12 +143,16 @@ def logout():
 def get_profile():
     current_user_id = get_jwt_identity()
     current_user = load_user(current_user_id)
+    saved_properties = SavedProperty.query.filter_by(user_id=current_user.id).all()
+    properties = Property.query.filter(Property.id.in_([sp.property_id for sp in saved_properties])).all()
+    offers = Offer.query.filter_by(user_id=current_user.id).all()
     return jsonify({
         "id": current_user.id,
         "username": current_user.username,
         "email": current_user.email,
         "role": current_user.role,
-        # "properties": [sp.property.to_dict() for sp in current_user.saved_properties]
+        "properties": [property.to_dict() for property in properties],
+        "offers": [offer.to_dict() for offer in offers]
     })
 
 @app.route('/properties', methods=['GET'])
@@ -153,11 +161,16 @@ def get_properties():
     return jsonify([property.to_dict() for property in properties])
 
 @app.route('/properties/<int:id>', methods=['GET'])
+@jwt_required()
 def get_property(id):
     property = Property.query.get(id)
+    offer = Offer.query.filter_by(property_id=id, user_id=get_jwt_identity()).first()
     if not property:
         return jsonify({"error": "Property not found"}), 404
-    return jsonify(property.to_dict())
+    return jsonify({
+        "offer": offer.to_dict() if offer else None,
+        **property.to_dict()
+    })
 
 @app.route('/properties', methods=['POST'])
 @jwt_required()
@@ -194,7 +207,8 @@ def save_property(id):
     try:
         db.session.commit()
         return jsonify({"message": "Property saved successfully"}), 201
-    except:
+    except Exception as e:
+        print(e)
         db.session.rollback()
         return jsonify({"error": "Failed to save property"}), 400
 
@@ -216,16 +230,23 @@ def submit_offer(id):
     if not property:
         return jsonify({"error": "Property not found"}), 404
     data = request.json
+    already_made_offer = Offer.query.filter_by(property_id=id, user_id=current_user.id).first()
+    if already_made_offer:
+        return jsonify({"error": "You have already made an offer on this property"}), 400
     new_offer = Offer(
         property_id=id,
         user_id=current_user.id,
-        amount=data['amount']
+        amount=float(data['amount']),
+        name=data['name'],
+        phone=data['phone'],
+        email=data['email']
     )
     db.session.add(new_offer)
     try:
         db.session.commit()
         return jsonify(new_offer.to_dict()), 201
-    except:
+    except Exception as e:
+        print(e)
         db.session.rollback()
         return jsonify({"error": "Failed to submit offer"}), 400
 

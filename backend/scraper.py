@@ -8,7 +8,7 @@ from psycopg2.extras import execute_values
 def get_connection():
     db = {
         "host": "127.0.0.1",
-        "database": "doc-hub",
+        "database": "real_estate_db",
         "user": "",
         "password": "",
         "port": "5432",
@@ -47,15 +47,15 @@ class FacebookScraper:
         try:
             cursor, connection = get_db_connection()
             values_list = [
-                (post["user_name"], post["user_url"], post["text"], post["timestamp"], json.dumps(post["image_urls"]) if post["image_urls"] else None ,self.base_url, generate_text_hash(post["text"])) 
+                (post["user_name"], post["user_url"], post["text"], post["timestamp"], json.dumps(post["image_urls"]) if post["image_urls"] else None , post.get("comments", None), self.base_url, generate_text_hash(post["text"])) 
                 for post in self.posts
             ]
             print(f"inserting {len(values_list)}")
             execute_values(
                 cursor,
-                "INSERT INTO posts (user_name, user_url, text, timestamp, image_urls, url, text_hash) VALUES %s ON CONFLICT (text_hash, base_url) DO NOTHING;",
+                "INSERT INTO posts (user_name, user_url, text, timestamp, image_urls, comments, base_url, text_hash) VALUES %s ON CONFLICT (text_hash, base_url) DO NOTHING;",
                 values_list,
-                "(%s, %s, %s, %s, %s, %s, %s)",
+                "(%s, %s, %s, %s, %s, %s, %s, %s)",
             )
             connection.commit()
             cursor.close()
@@ -84,6 +84,7 @@ class FacebookScraper:
             i += 200
             yield page
 
+
     async def execute(self):
         async with async_playwright() as playwright:
             async def postprocess_response(response) -> None:
@@ -95,6 +96,7 @@ class FacebookScraper:
                         json_data = json.loads("[" + response_text[0:-1] + "]")
                         date = None
                         image_urls = []
+                        all_comments = []
                         for item in json_data:
                             for k,v in item.items():
                                 if k == "data":
@@ -110,6 +112,23 @@ class FacebookScraper:
                                                     if "creation_time" in metadata_story:
                                                         date = metadata_story["creation_time"]
                                             story = comet_sections["content"]["story"]
+                                            try:
+                                                comments = comet_sections.get("feedback", {}).get("story", {}).get("story_ufi_container", {}).get("story", {}).get("feedback_context", {}).get("interesting_top_level_comments", [])
+                                                if comments:
+                                                    for comment in comments:
+                                                        comment_text = comment["comment"].get("body", {}).get("text", "")
+                                                        if comment_text:
+                                                            comment_user = comment["comment"]["author"]["name"]
+                                                            url = comment["comment"]["author"]["url"]
+                                                            all_comments.append({
+                                                                "user_name": comment_user,
+                                                                "user_url": url,
+                                                                "text": comment_text,
+                                                            })
+                                                            print(f"found comment {comment_user} {comment_text}")
+                                            except Exception as e:
+                                                print(e)
+
                                             text = story["comet_sections"].get("message", {}).get("story", {}).get("message", {}).get("text", "")
                                             attachments = story.get("attachments")
                                             if attachments:
@@ -121,16 +140,17 @@ class FacebookScraper:
                                             url = actor["url"]
                                             if date and date < self.time:
                                                 self.completed = True
-                                            print(f"found post {user_name} {len(image_urls)} {text}")
+                                            print(f"found post {user_name} {text}")
                                             if text:
                                                 self.posts.append({
                                                     "user_name": user_name,
                                                     "user_url": url,
                                                     "text": text,
                                                     "timestamp": date,
-                                                    "image_urls": image_urls
+                                                    "image_urls": image_urls,
+                                                    "comments": json.dumps(all_comments)
                                                 })
-                                            if len(self.posts) == 100:
+                                            if len(self.posts) == 10:
                                                 print("Saving")
                                                 self.save()
                                                 self.posts = []

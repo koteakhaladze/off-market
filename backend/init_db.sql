@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS posts (
     timestamp INTEGER NULL,
     image_urls JSON NULL,
     base_url VARCHAR(1000) NOT NULL,
+    comments JSON NULL,
     text_hash BYTEA NOT NULL,
     UNIQUE (text_hash, base_url)
 );
@@ -36,11 +37,14 @@ CREATE INDEX idx_text_hash_base_url ON posts (text_hash, base_url);
 
 CREATE TABLE IF NOT EXISTS offers (
     id SERIAL PRIMARY KEY,
-    property_id INTEGER FOREIGN KEY REFERENCES properties(id) NOT NULL,
+    property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     amount NUMERIC(10, 2) NOT NULL,
     name VARCHAR(100) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    email VARCHAR(100) NOT NULL
+    phone VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS saved_properties (

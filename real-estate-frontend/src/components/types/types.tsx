@@ -8,4 +8,5 @@ export interface Property {
     latitude: number;
     longitude: number;
     image_urls: string[] | null;
+    offer: any;
   }

@@ -81,7 +81,7 @@ class FacebookScraper:
                     }})
                 }}
             """, i)
-            i += 200
+            i += 10
             yield page
 
 
@@ -125,11 +125,12 @@ class FacebookScraper:
                                                                 "user_url": url,
                                                                 "text": comment_text,
                                                             })
-                                                            print(f"found comment {comment_user} {comment_text}")
                                             except Exception as e:
                                                 print(e)
 
                                             text = story["comet_sections"].get("message", {}).get("story", {}).get("message", {}).get("text", "")
+                                            if not text:
+                                                continue
                                             attachments = story.get("attachments")
                                             if attachments:
                                                 for attach in attachments:
@@ -140,7 +141,7 @@ class FacebookScraper:
                                             url = actor["url"]
                                             if date and date < self.time:
                                                 self.completed = True
-                                            print(f"found post {user_name} {text}")
+                                            print(f"found post {user_name} with {text[:20]} {[comment['user_name'] for comment in all_comments]}")
                                             if text:
                                                 self.posts.append({
                                                     "user_name": user_name,
@@ -150,6 +151,7 @@ class FacebookScraper:
                                                     "image_urls": image_urls,
                                                     "comments": json.dumps(all_comments)
                                                 })
+                                            all_comments = []
                                             if len(self.posts) == 10:
                                                 print("Saving")
                                                 self.save()

@@ -4,6 +4,8 @@ import time
 from playwright.async_api import async_playwright
 import psycopg2
 from psycopg2.extras import execute_values
+import requests
+from playwright.async_api import TimeoutError
 
 def get_connection():
     db = {
@@ -41,6 +43,7 @@ class FacebookScraper:
         self.posts = []
         self.base_url = url
         self.completed = False
+        self.last_found_post = 0
         print("starting scraping")
 
     def save(self):
@@ -89,7 +92,6 @@ class FacebookScraper:
         async with async_playwright() as playwright:
             async def postprocess_response(response) -> None:
                 if "api/graphql" in response.url:
-                    print("Response URL: ", response.url)
                     try:
                         response_text = await response.text()
                         response_text = response_text.replace('}}}}}', "}}}}},")
@@ -116,7 +118,7 @@ class FacebookScraper:
                                                 comments = comet_sections.get("feedback", {}).get("story", {}).get("story_ufi_container", {}).get("story", {}).get("feedback_context", {}).get("interesting_top_level_comments", [])
                                                 if comments:
                                                     for comment in comments:
-                                                        comment_text = comment["comment"].get("body", {}).get("text", "")
+                                                        comment_text = comment.get("comment", {}).get("body", {}).get("text", "")
                                                         if comment_text:
                                                             comment_user = comment["comment"]["author"]["name"]
                                                             url = comment["comment"]["author"]["url"]
@@ -127,8 +129,9 @@ class FacebookScraper:
                                                             })
                                             except Exception as e:
                                                 print(e)
-
-                                            text = story["comet_sections"].get("message", {}).get("story", {}).get("message", {}).get("text", "")
+                                            if not story:
+                                                continue
+                                            text = story.get("comet_sections", {}).get("message", {}).get("story", {}).get("message", {}).get("text", "")
                                             if not text:
                                                 continue
                                             attachments = story.get("attachments")
@@ -143,6 +146,7 @@ class FacebookScraper:
                                                 self.completed = True
                                             print(f"found post {user_name} with {text[:20]} {[comment['user_name'] for comment in all_comments]}")
                                             if text:
+                                                self.last_found_post = int(time.time())
                                                 self.posts.append({
                                                     "user_name": user_name,
                                                     "user_url": url,
@@ -179,22 +183,40 @@ class FacebookScraper:
                 }
             )
             tries = 0
+            exited = False
             while True:
                 try:
                     if tries > 10:
+                        exited = True
                         break
                     await base_page.goto(self.base_url)
                     await base_page.wait_for_selector("[aria-label=\"Close\"]")
                     loc = base_page.locator("[aria-label=\"Close\"]")
                     await loc.dispatch_event("click")
+                    try:
+                        await base_page.wait_for_selector(".x9f619.x1n2onr6.x1ja2u2z.x78zum5.x2lah0s.x1nhvcw1.x6s0dn4.xozqiw3.x1q0g3np.xexx8yu.xwrv7xz.x8182xy.xmgb6t1.x1kgmq87", timeout=30000)
+                        loc = base_page.locator(".x9f619.x1n2onr6.x1ja2u2z.x78zum5.x2lah0s.x1nhvcw1.x6s0dn4.xozqiw3.x1q0g3np.xexx8yu.xwrv7xz.x8182xy.xmgb6t1.x1kgmq87")
+                        text = await loc.inner_text()
+                        if "private" in text.lower():
+                            print("private")
+                            exited = True
+                    except TimeoutError as e:
+                        print("exited")
+                        exited = False
                     break
                 except Exception as e:
                     print(e)
                     tries += 1
                     continue
             # 1 week ago
+            if exited:
+                return
             self.time = int(time.time() - 60 * 60 * 24 * 7)
+            self.last_found_post =int(time.time())
             async for page in self.scroll_to_bottom(base_page):
+                if int(time.time()) - self.last_found_post > 180:
+                    self.completed = True
+                    break
                 if self.completed:
                     self.save()
                     break
